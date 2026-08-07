@@ -1118,14 +1118,29 @@ function printCalc() {
     }
   }
 
-  // Блок «Мат капитал» — только в режиме matcap
+  // Блок «Мат капитал» — только в режиме matcap. Точный расчёт до рубля.
   let matcapHtml = '';
   if (state.mode === 'matcap' && state.matcap > 0) {
     const matcap = state.matcap;
-    const monthsCovered = Math.min(term, roundMatMonths(monthly > 0 ? matcap/monthly : 0));
-    const monthsClient  = Math.max(0, term - monthsCovered);
-    const clientPays    = monthsClient * monthly;
-    const matcapPays    = monthsCovered * monthly;
+    const totalP = term * monthly;
+    const matcapPays = Math.min(matcap, totalP);
+    const clientPays = Math.max(0, totalP - matcapPays);
+    const rawMonths  = monthly > 0 ? matcapPays / monthly : 0;
+    const monthsShown = Math.floor(rawMonths * 10) / 10;
+    const fullMonths  = Math.floor(rawMonths);
+    const partialCover  = matcapPays - fullMonths * monthly;
+    const partialClient = partialCover > 0 ? monthly - partialCover : 0;
+    const clientFullMonths = Math.max(0, term - fullMonths - (partialCover > 0 ? 1 : 0));
+    const matStartMonth = term - fullMonths + 1;
+    const partialMonth  = term - fullMonths;
+
+    let partialPrint = '';
+    if (partialCover > 0 && matcap < totalP) {
+      partialPrint = `<div style="margin-top:5px;padding:6px 10px;background:#FDFCFA;border:1px dashed #D4A843;border-radius:6px;font-size:8pt;color:#1A1713;line-height:1.5">Мат капитал гасит с конца: последние <b>${fullMonths} мес.</b> (${matStartMonth}–${term}) полностью, в <b>${partialMonth}-м месяце</b> покрывает <b>${fmt(partialCover)}</b> из <b>${fmt(monthly)}</b>, клиент доплачивает <b>${fmt(partialClient)}</b>. Первые <b>${clientFullMonths}</b> мес. (1–${clientFullMonths}) клиент платит полностью по ${fmt(monthly)}.</div>`;
+    } else if (fullMonths > 0 && matcap < totalP) {
+      partialPrint = `<div style="margin-top:5px;padding:6px 10px;background:#FDFCFA;border:1px dashed #D4A843;border-radius:6px;font-size:8pt;color:#1A1713;line-height:1.5">Мат капитал закрывает <b>последние ${fullMonths} мес.</b> (${matStartMonth}–${term}). Первые ${term - fullMonths} мес. клиент платит по ${fmt(monthly)}.</div>`;
+    }
+
     matcapHtml = `
       <div style="margin-top:5px;border:1.5px solid #D5D0C8;border-radius:8px;padding:8px 12px;background:#FFF8E7">
         <div style="display:flex;align-items:center;gap:5px;margin-bottom:6px">
@@ -1136,20 +1151,21 @@ function printCalc() {
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 10px;font-size:8.5pt;margin-bottom:6px">
           <div><div style="color:#7A7268;font-size:6.5pt">Мат капитал</div><div style="font-weight:700">${fmt(matcap)}</div></div>
           <div><div style="color:#7A7268;font-size:6.5pt">Ежемес. платёж</div><div style="font-weight:700">${fmt(monthly)}</div></div>
-          <div><div style="color:#7A7268;font-size:6.5pt">Покрывает</div><div style="font-weight:700;color:#B8860B">${fmtMonths(monthsCovered)} из ${term} мес.</div></div>
+          <div><div style="color:#7A7268;font-size:6.5pt">Покрывает</div><div style="font-weight:700;color:#B8860B">${fmtMonths(monthsShown)} из ${term} мес.</div></div>
         </div>
         <div style="display:flex;gap:8px">
           <div style="flex:1;background:#FFF3D0;border:1.5px solid #E0C874;border-radius:6px;padding:6px 10px;text-align:center">
             <div style="color:#7A7268;font-size:7pt;text-transform:uppercase;letter-spacing:.05em">Клиент платит сам</div>
-            <div style="font-size:6.5pt;color:#7A7268;margin-top:1px">${fmtMonths(monthsClient)} мес. × ${fmt(monthly)}</div>
+            <div style="font-size:6.5pt;color:#7A7268;margin-top:1px">${partialCover>0 ? 'мес. 1–'+partialMonth+' (последний частично)' : 'мес. 1–'+(term-fullMonths)}</div>
             <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:12pt;color:#B8860B;line-height:1.1;margin-top:2px">${fmt(clientPays)}</div>
           </div>
           <div style="flex:1;background:#EDF3EF;border:1.5px solid #1A3A2A;border-radius:6px;padding:6px 10px;text-align:center">
-            <div style="color:#7A7268;font-size:7pt;text-transform:uppercase;letter-spacing:.05em">Покрыто мат капиталом</div>
-            <div style="font-size:6.5pt;color:#7A7268;margin-top:1px">${fmtMonths(monthsCovered)} мес. × ${fmt(monthly)}</div>
+            <div style="color:#7A7268;font-size:7pt;text-transform:uppercase;letter-spacing:.05em">Покрыто мат капиталом (с конца)</div>
+            <div style="font-size:6.5pt;color:#7A7268;margin-top:1px">${partialCover>0 ? 'часть мес. '+partialMonth+' + мес. '+matStartMonth+'–'+term : 'мес. '+matStartMonth+'–'+term}</div>
             <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:12pt;color:#1A3A2A;line-height:1.1;margin-top:2px">${fmt(matcapPays)}</div>
           </div>
         </div>
+        ${partialPrint}
       </div>
     `;
   }
@@ -1232,12 +1248,49 @@ function ppAltHtml(mon, tenth, nth, months, total) {
 }
 
 function renderMatcapBlock(monthly, term) {
-  const matcap = state.matcap || 0;
-  const rawMonths = monthly > 0 ? matcap / monthly : 0;
-  const monthsCovered = Math.min(term, roundMatMonths(rawMonths));
-  const monthsClient  = Math.max(0, term - monthsCovered);
-  const clientPays    = monthsClient * monthly;
-  const matcapPays    = monthsCovered * monthly;
+  const matcap  = state.matcap || 0;
+  const total   = term * monthly;
+  // Точный расчёт до рубля:
+  const matcapPays = Math.min(matcap, total);       // фактически покрыто мат капиталом
+  const clientPays = Math.max(0, total - matcapPays); // остаток клиенту
+  const rawMonths  = monthly > 0 ? matcapPays / monthly : 0;
+  const monthsShown = Math.floor(rawMonths * 10) / 10; // 14.897 → 14.8 (строго 1 знак, вниз)
+
+  // Разбивка «полные месяцы + частичный»
+  const fullMonths   = Math.floor(rawMonths);
+  const partialCover = matcapPays - fullMonths * monthly;      // сколько мат капитал покрыл в след. месяце
+  const partialClient = partialCover > 0 ? monthly - partialCover : 0; // сколько клиент доплачивает в этом же месяце
+  const clientFullMonths = Math.max(0, term - fullMonths - (partialCover > 0 ? 1 : 0));
+
+  // Мат капитал гасит с конца рассрочки:
+  // - последние fullMonths месяцев (напр. 67-80) полностью
+  // - месяц перед ними (напр. 66) — частично (partialCover), клиент доплачивает partialClient
+  // - остальные первые clientFullMonths месяцев (1-65) — клиент платит полностью
+  const matStartMonth = term - fullMonths + 1;     // 80 - 14 + 1 = 67 — первый полностью покрытый
+  const partialMonth  = term - fullMonths;          // 80 - 14 = 66 — месяц с частичным покрытием
+  let partialLine = '';
+  if (partialCover > 0 && matcap < total) {
+    partialLine = `
+      <div class="mc-notice">
+        Мат капитал гасит рассрочку <b>с конца</b>:
+        последние <b>${fullMonths} ${pluralize(fullMonths,'месяц','месяца','месяцев')}</b>
+        (${matStartMonth}–${term}) — полностью,
+        а в <b>${partialMonth}-м месяце</b> покрывает <b>${fmt(partialCover)}</b> из <b>${fmt(monthly)}</b>,
+        клиент доплачивает <b>${fmt(partialClient)}</b>.
+        Первые <b>${clientFullMonths}</b> ${pluralize(clientFullMonths,'месяц','месяца','месяцев')}
+        (1–${clientFullMonths}) клиент платит полностью по ${fmt(monthly)}.
+      </div>`;
+  } else if (matcap >= total) {
+    partialLine = '';
+  } else if (fullMonths > 0) {
+    // мат капитал ровно N полных месяцев без остатка
+    partialLine = `
+      <div class="mc-notice">
+        Мат капитал закрывает <b>последние ${fullMonths} ${pluralize(fullMonths,'месяц','месяца','месяцев')}</b>
+        рассрочки (${matStartMonth}–${term}). Первые ${term - fullMonths} ${pluralize(term - fullMonths,'месяц','месяца','месяцев')}
+        клиент платит полностью по ${fmt(monthly)}.
+      </div>`;
+  }
 
   return `
     <div class="matcap-block">
@@ -1256,26 +1309,28 @@ function renderMatcapBlock(monthly, term) {
         <div class="mc-formula-op">=</div>
         <div class="mc-formula-row mc-formula-result">
           <span>Мат капитал покроет</span>
-          <strong>${fmtMonths(monthsCovered)} из ${term} мес.</strong>
+          <strong>${fmtMonths(monthsShown)} из ${term} мес.</strong>
         </div>
       </div>
 
       <div class="mc-split">
         <div class="mc-split-card mc-client">
           <div class="mc-split-label">Клиент платит сам</div>
-          <div class="mc-split-months">${fmtMonths(monthsClient)} мес. × ${fmt(monthly)}</div>
+          <div class="mc-split-months">${partialCover > 0 ? 'мес. 1–' + partialMonth + ' (последний — частично)' : 'мес. 1–' + (term - fullMonths)}</div>
           <div class="mc-split-amount">${fmt(clientPays)}</div>
         </div>
         <div class="mc-split-card mc-mat">
-          <div class="mc-split-label">Покрывает мат капитал</div>
-          <div class="mc-split-months">${fmtMonths(monthsCovered)} мес. × ${fmt(monthly)}</div>
+          <div class="mc-split-label">Покрывает мат капитал (с конца)</div>
+          <div class="mc-split-months">${partialCover > 0 ? 'часть мес. ' + partialMonth + ' + мес. ' + matStartMonth + '–' + term : 'мес. ' + matStartMonth + '–' + term}</div>
           <div class="mc-split-amount">${fmt(matcapPays)}</div>
         </div>
       </div>
 
-      ${monthsClient === 0 ? `
+      ${partialLine}
+
+      ${clientPays === 0 ? `
         <div class="mc-notice mc-notice-green">✓ Мат капитал полностью покрывает все ${term} месяцев рассрочки — клиенту доплачивать не придётся.</div>
-      ` : matcap > 0 ? `
+      ` : matcap > 0 && !partialLine ? `
         <div class="mc-notice">Итого: ${fmt(matcapPays)} — за счёт мат капитала, ${fmt(clientPays)} — из своих средств.</div>
       ` : ''}
     </div>
